@@ -1,0 +1,232 @@
+# Cilium Helm Values for VPC-CNI Migration
+#
+# This configuration enables Cilium with egress gateway functionality
+# for AWS EKS clusters migrating from VPC-CNI.
+#
+# Installation:
+# helm install cilium cilium/cilium \
+#   --namespace kube-system \
+#   --values cilium-values.yaml
+
+# Egress Gateway Configuration
+egressGateway:
+  enabled: true                    # Enable egress gateway feature
+  reconciliationTriggerInterval: 1s
+
+# BPF Configuration
+bpf:
+  masquerade: true                 # Enable BPF-based masquerading for egress
+  tproxy: true                     # Enable transparent proxy mode
+
+# Kube-proxy Replacement
+# Replace kube-proxy with Cilium's eBPF implementation
+kubeProxyReplacement: true         # Set to true for full replacement
+  # Options: disabled, probe, strict, true
+  # - disabled: Keep kube-proxy
+  # - probe: Auto-detect
+  # - strict: Replace and fail if issues
+  # - true: Replace kube-proxy
+
+# Routing Mode
+routingMode: tunnel                # Use tunnel (overlay) mode
+tunnelProtocol: vxlan              # VXLAN tunneling protocol
+  # Alternative: geneve
+
+# IPAM Configuration
+ipam:
+  mode: cluster-pool               # Cluster-wide IP pool
+  operator:
+    clusterPoolIPv4PodCIDRList:
+    - "10.244.0.0/16"              # Pod CIDR (overlay network)
+    clusterPoolIPv4MaskSize: 24    # /24 per node (256 IPs)
+
+# AWS ENI
+eni:
+  enabled: false                   # Disable ENI mode (we're using overlay)
+
+# Identity Allocation Mode
+identityAllocationMode: crd        # Use CRDs for identity allocation
+
+# Enable Hubble (Observability)
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+    replicas: 1
+  ui:
+    enabled: true
+    replicas: 1
+    ingress:
+      enabled: false               # Enable if you want external access
+
+# Cilium Operator
+operator:
+  replicas: 2                      # HA for production
+  resources:
+    requests:
+      cpu: 100m
+      memory: 200Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Cilium Agent Resources
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+# Enable IPv4
+ipv4:
+  enabled: true
+
+# Disable IPv6 (unless needed)
+ipv6:
+  enabled: false
+
+# Prometheus Metrics
+prometheus:
+  enabled: true
+  port: 9090
+  serviceMonitor:
+    enabled: false                 # Enable if using Prometheus Operator
+
+# API Rate Limiting
+k8sServiceHost: ""                 # Auto-detected
+k8sServicePort: ""                 # Auto-detected
+
+# Agent Health Port
+agentHealthPort: 9879
+
+# Enable policy enforcement
+policyEnforcementMode: default     # Options: default, always, never
+
+# Enable bandwidth manager (optional)
+bandwidthManager:
+  enabled: false                   # Enable for pod bandwidth control
+
+# Enable local redirect policy (optional)
+localRedirectPolicy: false
+
+# Security Context
+securityContext:
+  privileged: true                 # Required for eBPF
+
+# Tolerations for all nodes
+tolerations:
+- operator: Exists
+
+# Node Selector (optional)
+# nodeSelector:
+#   kubernetes.io/os: linux
+
+# Affinity (optional)
+# affinity:
+#   podAntiAffinity:
+#     requiredDuringSchedulingIgnoredDuringExecution:
+#     - labelSelector:
+#         matchLabels:
+#           k8s-app: cilium
+#       topologyKey: kubernetes.io/hostname
+
+# Enable debug (for troubleshooting)
+debug:
+  enabled: false                   # Set to true for debug logs
+
+# Encryption (optional - adds overhead)
+encryption:
+  enabled: false                   # Enable for pod-to-pod encryption
+  type: wireguard                  # Options: wireguard, ipsec
+
+# Enable monitoring
+monitor:
+  enabled: true
+
+# Clean state on restart
+cleanState: false
+
+# Log Options
+logSystemLoad: false
+
+# MTU Configuration
+# Default: 1500
+# VXLAN overhead: ~50 bytes
+# Recommended: 1450 for VXLAN
+mtu: 1450
+
+# Install additional CRDs
+installCRDs: true
+
+# Update strategy
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+
+# Priority Class
+priorityClassName: system-node-critical
+
+---
+# Production-specific overrides
+# Uncomment and adjust for production use
+
+# # High Availability
+# operator:
+#   replicas: 3
+#   affinity:
+#     podAntiAffinity:
+#       requiredDuringSchedulingIgnoredDuringExecution:
+#       - labelSelector:
+#           matchLabels:
+#             io.cilium/app: operator
+#         topologyKey: kubernetes.io/hostname
+
+# # Increased Resources
+# resources:
+#   requests:
+#     cpu: 500m
+#     memory: 1Gi
+#   limits:
+#     cpu: 4000m
+#     memory: 4Gi
+
+# # Enable Monitoring Stack
+# prometheus:
+#   enabled: true
+#   serviceMonitor:
+#     enabled: true
+#     labels:
+#       prometheus: kube-prometheus
+
+# hubble:
+#   relay:
+#     replicas: 2
+#   ui:
+#     replicas: 2
+#     ingress:
+#       enabled: true
+#       className: alb
+#       annotations:
+#         alb.ingress.kubernetes.io/scheme: internal
+#       hosts:
+#       - host: hubble.internal.example.com
+#         paths:
+#         - path: /
+#           pathType: Prefix
+
+# # Enable Encryption
+# encryption:
+#   enabled: true
+#   type: wireguard
+#   nodeEncryption: true
+
+# # Enable Bandwidth Manager
+# bandwidthManager:
+#   enabled: true
+#   bbr: true
+
+# # Policy Audit Mode
+# policyAuditMode: false

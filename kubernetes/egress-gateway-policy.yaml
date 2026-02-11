@@ -1,0 +1,44 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumEgressGatewayPolicy
+metadata:
+  name: test-app-egress
+spec:
+  # Select pods that will use the egress gateway
+  selectors:
+  - podSelector:
+      matchLabels:
+        app: test-app
+
+  # Destination CIDR - which external traffic should go through gateway
+  # 0.0.0.0/0 means all external traffic
+  destinationCIDRs:
+  - "0.0.0.0/0"
+
+  # Gateway node selection
+  # Use nodes with io.cilium.gateway=enabled label
+  egressGateway:
+    nodeSelector:
+      matchLabels:
+        node-role: gateway
+---
+apiVersion: cilium.io/v2
+kind: CiliumEgressGatewayPolicy
+metadata:
+  name: curl-test-egress
+spec:
+  # Select curl-test pod for testing
+  selectors:
+  - podSelector:
+      matchLabels:
+        app: curl-test
+
+  # All external traffic
+  destinationCIDRs:
+  - "0.0.0.0/0"
+
+  # Use gateway nodes
+  egressGateway:
+    nodeSelector:
+      matchLabels:
+        node-role: gateway

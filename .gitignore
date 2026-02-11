@@ -1,0 +1,69 @@
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!terraform.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Kubernetes
+kubeconfig
+*.kubeconfig
+
+# AWS
+.aws/
+credentials
+
+# Logs
+*.log
+logs/
+*.output
+
+# Backup files
+backup/
+pre-migration-*.txt
+post-migration-*.txt
+pre-migration-*.yaml
+post-migration-*.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.env
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Secrets
+secrets/
+*.pem
+*.key
+*.crt
+.env.local
+.env.production
+
+# Test outputs
+test-results/
+coverage/
+
+# Migration artifacts
+migration-output.log

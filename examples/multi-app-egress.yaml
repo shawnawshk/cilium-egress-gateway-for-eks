@@ -1,0 +1,188 @@
+# Multi-Application Egress Gateway Configuration
+#
+# This example shows how to configure different egress IPs for multiple applications.
+# Each application uses dedicated gateway nodes with their own Elastic IPs.
+#
+# Prerequisites:
+# 1. Gateway nodes deployed and labeled appropriately
+# 2. Elastic IPs allocated and associated with gateway nodes
+# 3. Applications deployed with proper labels
+
+---
+# Frontend Application Egress
+# Uses gateway nodes labeled: gateway-group=frontend
+# Elastic IPs: 100.48.235.218, 100.48.235.219
+apiVersion: cilium.io/v2
+kind: CiliumEgressGatewayPolicy
+metadata:
+  name: frontend-egress
+  namespace: default
+spec:
+  # Select frontend pods
+  selectors:
+  - podSelector:
+      matchLabels:
+        app: frontend
+        tier: frontend
+
+  # Route all external traffic
+  destinationCIDRs:
+  - "0.0.0.0/0"
+
+  # Exclude internal traffic (optional)
+  excludedCIDRs:
+  - "10.0.0.0/8"    # Private networks
+  - "172.16.0.0/12"
+  - "192.168.0.0/16"
+
+  # Use frontend gateway nodes
+  egressGateway:
+    nodeSelector:
+      matchLabels:
+        gateway-group: frontend
+
+---
+# Backend Application Egress
+# Uses gateway nodes labeled: gateway-group=backend
+# Elastic IPs: 100.48.235.220, 100.48.235.221
+apiVersion: cilium.io/v2
+kind: CiliumEgressGatewayPolicy
+metadata:
+  name: backend-egress
+  namespace: default
+spec:
+  # Select backend pods
+  selectors:
+  - podSelector:
+      matchLabels:
+        app: backend
+        tier: backend
+
+  # Route all external traffic
+  destinationCIDRs:
+  - "0.0.0.0/0"
+
+  # Use backend gateway nodes
+  egressGateway:
+    nodeSelector:
+      matchLabels:
+        gateway-group: backend
+
+---
+# Data Pipeline Application Egress
+# Uses gateway nodes labeled: gateway-group=datapipeline
+# Elastic IPs: 100.48.235.222, 100.48.235.223
+apiVersion: cilium.io/v2
+kind: CiliumEgressGatewayPolicy
+metadata:
+  name: datapipeline-egress
+  namespace: data
+spec:
+  # Select data pipeline pods in 'data' namespace
+  selectors:
+  - podSelector:
+      matchLabels:
+        app: datapipeline
+
+  # Route only to specific external services
+  destinationCIDRs:
+  - "54.0.0.0/8"     # Example: AWS S3 IP range
+  - "52.0.0.0/8"     # Example: AWS services
+
+  # Use datapipeline gateway nodes
+  egressGateway:
+    nodeSelector:
+      matchLabels:
+        gateway-group: datapipeline
+
+---
+# Admin Tools Egress
+# Uses gateway nodes labeled: gateway-group=admin
+# Elastic IP: 100.48.235.224
+apiVersion: cilium.io/v2
+kind: CiliumEgressGatewayPolicy
+metadata:
+  name: admin-egress
+  namespace: admin
+spec:
+  # Select admin pods
+  selectors:
+  - podSelector:
+      matchLabels:
+        tier: admin
+
+  # Route all external traffic
+  destinationCIDRs:
+  - "0.0.0.0/0"
+
+  # Use admin gateway nodes
+  egressGateway:
+    nodeSelector:
+      matchLabels:
+        gateway-group: admin
+
+---
+# Gateway Node Labeling Commands
+#
+# After deploying gateway nodes, label them appropriately:
+#
+# Frontend gateways:
+# kubectl label node gateway-node-1 gateway-group=frontend
+# kubectl label node gateway-node-2 gateway-group=frontend
+#
+# Backend gateways:
+# kubectl label node gateway-node-3 gateway-group=backend
+# kubectl label node gateway-node-4 gateway-group=backend
+#
+# Data pipeline gateways:
+# kubectl label node gateway-node-5 gateway-group=datapipeline
+# kubectl label node gateway-node-6 gateway-group=datapipeline
+#
+# Admin gateway:
+# kubectl label node gateway-node-7 gateway-group=admin
+
+---
+# Elastic IP to Application Mapping
+#
+# Document this mapping for external service whitelisting:
+#
+# Application    | Gateway Nodes      | Elastic IPs
+# ---------------|--------------------|--------------------------
+# Frontend       | gateway-node-1,2   | 100.48.235.218, .219
+# Backend        | gateway-node-3,4   | 100.48.235.220, .221
+# Data Pipeline  | gateway-node-5,6   | 100.48.235.222, .223
+# Admin Tools    | gateway-node-7     | 100.48.235.224
+#
+# External services should whitelist these IPs based on application needs.
+
+---
+# Verification Commands
+#
+# Check policies:
+# kubectl get ciliumegressgatewaypolicy --all-namespaces
+#
+# Check which pods match which policy:
+# kubectl get pods -l app=frontend --show-labels
+# kubectl get pods -l app=backend --show-labels
+#
+# Check gateway nodes:
+# kubectl get nodes -l gateway-group
+#
+# Verify egress IP from a pod:
+# kubectl exec -n default <frontend-pod> -- curl -s ifconfig.me
+# Should show: 100.48.235.218 or .219
+#
+# Check Cilium egress routing table:
+# CILIUM_POD=$(kubectl get pod -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+# kubectl exec -n kube-system $CILIUM_POD -- cilium-dbg bpf egress list
+
+---
+# Cost Calculation (Monthly)
+#
+# Gateway Nodes: 7 × c5.large = 7 × $62 = $434
+# Elastic IPs: 7 × $3.60 = $25.20
+# Total Additional Cost: ~$459/month
+#
+# Compare to alternative (4 separate clusters):
+# 4 clusters × $500 = $2,000/month
+# Savings: $1,541/month (77% cost reduction)

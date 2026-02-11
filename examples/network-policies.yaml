@@ -1,0 +1,356 @@
+# Cilium Network Policies
+#
+# This example demonstrates Cilium's L3/L4/L7 network policies for micro-segmentation.
+# Network policies provide fine-grained control over traffic between pods.
+#
+# Features:
+# - Pod-to-pod communication rules
+# - Namespace isolation
+# - L7 (HTTP) filtering
+# - DNS-based policies
+# - Deny-by-default with explicit allows
+
+---
+# Default Deny All Traffic
+# Start with deny-all for security, then explicitly allow required traffic
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: default
+spec:
+  endpointSelector: {}  # Applies to all pods in namespace
+  # No ingress or egress rules = deny all
+
+---
+# Frontend to Backend Communication
+# Allow frontend pods to communicate with backend on specific ports
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: frontend-to-backend
+  namespace: default
+spec:
+  # Apply to frontend pods
+  endpointSelector:
+    matchLabels:
+      tier: frontend
+
+  # Allow egress to backend
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        tier: backend
+    toPorts:
+    - ports:
+      - port: "8080"
+        protocol: TCP
+      - port: "8443"
+        protocol: TCP
+
+  # Allow DNS for service discovery
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: "53"
+        protocol: UDP
+      rules:
+        dns:
+        - matchPattern: "*"
+
+  # Allow egress to external services (for egress gateway)
+  - toEntities:
+    - world
+
+---
+# Backend Ingress Policy
+# Allow backend to receive traffic from frontend only
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: backend-ingress
+  namespace: default
+spec:
+  # Apply to backend pods
+  endpointSelector:
+    matchLabels:
+      tier: backend
+
+  # Allow ingress from frontend
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        tier: frontend
+    toPorts:
+    - ports:
+      - port: "8080"
+        protocol: TCP
+      - port: "8443"
+        protocol: TCP
+
+---
+# Backend to Database Communication
+# Allow backend to access database
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: backend-to-database
+  namespace: default
+spec:
+  # Apply to backend pods
+  endpointSelector:
+    matchLabels:
+      tier: backend
+
+  # Allow egress to database
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        tier: database
+    toPorts:
+    - ports:
+      - port: "5432"  # PostgreSQL
+        protocol: TCP
+      - port: "3306"  # MySQL
+        protocol: TCP
+
+  # Allow DNS
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: "53"
+        protocol: UDP
+
+---
+# Database Ingress Policy
+# Allow database to receive traffic from backend only
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: database-ingress
+  namespace: default
+spec:
+  # Apply to database pods
+  endpointSelector:
+    matchLabels:
+      tier: database
+
+  # Allow ingress from backend
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        tier: backend
+    toPorts:
+    - ports:
+      - port: "5432"
+        protocol: TCP
+      - port: "3306"
+        protocol: TCP
+
+  # Deny all egress (database should not initiate connections)
+  egress: []
+
+---
+# L7 HTTP Policy
+# Fine-grained control at HTTP level
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: frontend-http-policy
+  namespace: default
+spec:
+  endpointSelector:
+    matchLabels:
+      tier: frontend
+
+  egress:
+  - toEndpoints:
+    - matchLabels:
+        tier: backend
+    toPorts:
+    - ports:
+      - port: "8080"
+        protocol: TCP
+      rules:
+        http:
+        - method: "GET"
+          path: "/api/.*"
+        - method: "POST"
+          path: "/api/.*"
+        - method: "PUT"
+          path: "/api/.*"
+        # Block DELETE method
+        # - method: "DELETE"  # Not allowed
+
+---
+# DNS-Based Egress Policy
+# Allow egress to specific external domains only
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: backend-external-access
+  namespace: default
+spec:
+  endpointSelector:
+    matchLabels:
+      tier: backend
+
+  egress:
+  # Allow DNS resolution
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s-app: kube-dns
+    toPorts:
+    - ports:
+      - port: "53"
+        protocol: UDP
+      rules:
+        dns:
+        - matchPattern: "*"
+
+  # Allow specific external domains
+  - toFQDNs:
+    - matchName: "api.stripe.com"
+    - matchName: "api.sendgrid.com"
+    - matchPattern: "*.amazonaws.com"
+    toPorts:
+    - ports:
+      - port: "443"
+        protocol: TCP
+
+---
+# Namespace Isolation
+# Isolate 'production' namespace from 'development'
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: production-isolation
+  namespace: production
+spec:
+  endpointSelector: {}  # All pods in production namespace
+
+  ingress:
+  # Only allow ingress from same namespace
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: production
+
+  # Allow ingress from ingress controller
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: ingress-nginx
+        app.kubernetes.io/name: ingress-nginx
+
+  egress:
+  # Allow egress to same namespace
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: production
+
+  # Allow DNS
+  - toEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: kube-system
+        k8s-app: kube-dns
+
+  # Allow external access (via egress gateway)
+  - toEntities:
+    - world
+
+---
+# Monitoring/Observability Exception
+# Allow Prometheus to scrape metrics from all pods
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-prometheus-scraping
+  namespace: default
+spec:
+  endpointSelector: {}  # All pods
+
+  ingress:
+  # Allow Prometheus to scrape
+  - fromEndpoints:
+    - matchLabels:
+        k8s:io.kubernetes.pod.namespace: monitoring
+        app: prometheus
+    toPorts:
+    - ports:
+      - port: "9090"  # Metrics port
+        protocol: TCP
+
+---
+# Verification Commands
+#
+# List all network policies:
+# kubectl get ciliumnetworkpolicy --all-namespaces
+#
+# Check policy for specific pod:
+# kubectl describe ciliumnetworkpolicy <policy-name>
+#
+# Test connectivity (should be blocked):
+# kubectl exec frontend-pod -- curl backend-pod:8080
+#
+# Test connectivity (should work):
+# kubectl exec frontend-pod -- curl backend-pod:8080/api/users
+#
+# View policy enforcement status:
+# CILIUM_POD=$(kubectl get pod -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+# kubectl exec -n kube-system $CILIUM_POD -- cilium-dbg endpoint list
+#
+# Check policy verdicts (with Hubble):
+# hubble observe --verdict DROPPED
+# hubble observe --verdict FORWARDED
+# hubble observe --from-pod frontend --to-pod backend
+
+---
+# Best Practices
+#
+# 1. Start with default deny-all
+# 2. Explicitly allow required traffic
+# 3. Use L7 policies for HTTP/gRPC
+# 4. Implement namespace isolation
+# 5. Use DNS-based policies for external services
+# 6. Test policies in staging first
+# 7. Monitor with Hubble for visibility
+# 8. Document policies with comments
+# 9. Review and update regularly
+# 10. Use labels consistently
+
+---
+# Policy Precedence
+#
+# More specific policies take precedence over general ones:
+# 1. Endpoint-specific rules
+# 2. Namespace-level rules
+# 3. Cluster-wide rules
+#
+# Deny rules override allow rules at the same level
+
+---
+# Troubleshooting
+#
+# If traffic is blocked unexpectedly:
+#
+# 1. Check if policy exists:
+#    kubectl get cnp -n <namespace>
+#
+# 2. Verify pod labels match policy selector:
+#    kubectl get pod <pod-name> --show-labels
+#
+# 3. Check Cilium endpoint policy status:
+#    kubectl exec -n kube-system <cilium-pod> -- \
+#      cilium-dbg endpoint get <endpoint-id>
+#
+# 4. Use Hubble to see dropped packets:
+#    hubble observe --verdict DROPPED --last 100
+#
+# 5. Temporarily remove policy to test:
+#    kubectl delete cnp <policy-name>

@@ -1,0 +1,58 @@
+# VPC-CNI to Cilium Migration - Terraform Configuration Example
+#
+# Copy this file to terraform.tfvars and adjust values for your environment
+# cp terraform.tfvars.example terraform.tfvars
+
+# EKS Cluster Configuration
+cluster_name = "cil-mig"           # Keep short (< 10 chars) to avoid IAM role name length issues
+region       = "us-east-1"         # AWS region
+
+# VPC Configuration
+vpc_cidr = "10.1.0.0/16"          # VPC CIDR block (ensure no conflicts with existing VPCs)
+
+# Worker Node Configuration
+# These nodes run your application workloads
+worker_desired_size  = 2           # Desired number of worker nodes
+worker_min_size      = 2           # Minimum number of worker nodes (for autoscaling)
+worker_max_size      = 3           # Maximum number of worker nodes (for autoscaling)
+worker_instance_type = "t3.small"  # Instance type (t3.small for testing, m5.xlarge for production)
+
+# Gateway Node Configuration
+# These nodes handle egress traffic with Elastic IPs
+# Set desired_size = 0 initially for VPC-CNI baseline, then increase to 1+ for egress gateway
+gateway_desired_size  = 0          # Start with 0, increase to 1+ after Cilium migration
+gateway_min_size      = 0          # Minimum gateway nodes
+gateway_max_size      = 2          # Maximum gateway nodes
+gateway_instance_type = "t3.small" # Instance type (t3.small for testing, c5.large for production)
+
+# Resource Tags
+tags = {
+  Project     = "cilium-migration"
+  Environment = "testing"           # testing, staging, production
+  Purpose     = "migration-validation"
+  ManagedBy   = "terraform"
+  Owner       = "your-team"         # Add your team name
+  CostCenter  = "engineering"       # Add your cost center
+}
+
+# Advanced Configuration (Optional)
+# Uncomment and adjust as needed
+
+# Kubernetes Version
+# kubernetes_version = "1.35"
+
+# Enable EKS add-ons
+# enable_vpc_cni  = true   # Set to false after Cilium migration
+# enable_coredns  = true
+# enable_kube_proxy = true  # Set to false if using Cilium kube-proxy replacement
+
+# Node Group AMI
+# ami_type = "AL2023_x86_64_STANDARD"
+
+# Enable detailed monitoring
+# enable_monitoring = true
+
+# VPC Configuration
+# availability_zones = ["us-east-1a", "us-east-1b", "us-east-1c"]
+# public_subnets_cidr  = ["10.1.0.0/24", "10.1.1.0/24", "10.1.2.0/24"]
+# private_subnets_cidr = ["10.1.10.0/24", "10.1.11.0/24", "10.1.12.0/24"]
