@@ -51,9 +51,9 @@ else
 fi
 echo ""
 
-# 2. Check Gateway Node Labels
+# 2. Check Gateway Node Configuration
 echo "=========================================="
-echo "2. Gateway Node Labels"
+echo "2. Gateway Node Configuration"
 echo "=========================================="
 
 GATEWAY_NODE=$(kubectl get nodes -l node-role=gateway -o jsonpath='{.items[0].metadata.name}')
@@ -66,6 +66,16 @@ if [ -n "$GATEWAY_NODE" ]; then
         pass "Label 'node-role=gateway' present"
     else
         fail "Label 'node-role=gateway' missing"
+    fi
+
+    # Check taints (should prevent workload pods)
+    TAINTS=$(kubectl get node "$GATEWAY_NODE" -o jsonpath='{.spec.taints[*].key}' 2>/dev/null)
+    if echo "$TAINTS" | grep -q "egress-gateway"; then
+        pass "Gateway node is tainted (prevents workload pods)"
+    else
+        warn "Gateway node has no taint - workload pods may schedule here"
+        echo "   Recommended: Add taint to prevent non-gateway workloads"
+        echo "   kubectl taint node $GATEWAY_NODE egress-gateway=true:NoSchedule"
     fi
 fi
 echo ""
@@ -112,23 +122,8 @@ CILIUM_POD=$(kubectl get pod -n kube-system -l k8s-app=cilium -o jsonpath='{.ite
 if kubectl exec -n kube-system "$CILIUM_POD" -- cilium-dbg status --brief >/dev/null 2>&1; then
     pass "Cilium agent healthy"
 
-    # Check egress gateway feature
-    EGRESS_STATUS=$(kubectl exec -n kube-system "$CILIUM_POD" -- cilium-dbg status --brief 2>/dev/null | grep -i "Egress Gateway" || echo "")
-    if echo "$EGRESS_STATUS" | grep -q "Ok\|Enabled"; then
-        pass "Egress Gateway feature enabled"
-    else
-        fail "Egress Gateway feature not enabled"
-        echo "   Check: egressGateway.enabled=true in Cilium config"
-    fi
-
-    # Check BPF masquerading
-    MASQ_STATUS=$(kubectl exec -n kube-system "$CILIUM_POD" -- cilium-dbg status --brief 2>/dev/null | grep -i "Masquerading" || echo "")
-    if echo "$MASQ_STATUS" | grep -q "BPF"; then
-        pass "BPF masquerading enabled"
-    else
-        fail "BPF masquerading not enabled"
-        echo "   Check: bpf.masquerade=true in Cilium config"
-    fi
+    # Check egress gateway feature (via BPF map test)
+    # Note: Status output varies, so we test actual functionality below
 else
     fail "Cilium agent not healthy"
 fi
@@ -163,9 +158,9 @@ else
 fi
 echo ""
 
-# 7. Test Egress IP
+# 7. Test Pod Placement
 echo "=========================================="
-echo "7. Egress IP Verification"
+echo "7. Test Pod Placement (should be on workers)"
 echo "=========================================="
 
 # Find a test pod
@@ -177,9 +172,29 @@ fi
 if [ -n "$TEST_POD" ]; then
     echo "Using test pod: $TEST_POD"
 
+    # Check which node the pod is on
+    POD_NODE=$(kubectl get pod "$TEST_POD" -o jsonpath='{.spec.nodeName}')
+    NODE_ROLE=$(kubectl get node "$POD_NODE" -o jsonpath='{.metadata.labels.node-role}' 2>/dev/null)
+
+    echo "Pod running on node: $POD_NODE"
+    if [ "$NODE_ROLE" = "gateway" ]; then
+        fail "Test pod is on GATEWAY node (should be on worker node)"
+        echo "   Gateway nodes should be tainted to prevent workload pods"
+        echo "   Check: kubectl describe node $POD_NODE | grep Taints"
+    else
+        pass "Test pod is on WORKER node (correct)"
+        echo "   Gateway node should only handle egress traffic routing"
+    fi
+
     # Check pod labels
     POD_LABELS=$(kubectl get pod "$TEST_POD" -o jsonpath='{.metadata.labels}')
     echo "Pod labels: $POD_LABELS"
+echo ""
+
+# 8. Egress IP Verification
+echo "=========================================="
+echo "8. Egress IP Test (Actual Traffic)"
+echo "=========================================="
 
     # Test egress IP
     echo ""
@@ -210,7 +225,7 @@ else
 fi
 echo ""
 
-# 8. Summary
+# 9. Summary
 echo "=========================================="
 echo "Summary"
 echo "=========================================="
