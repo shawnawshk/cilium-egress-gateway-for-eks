@@ -16,6 +16,16 @@ spec:
       labels:
         app: test-app
     spec:
+      # Ensure pods run on worker nodes, NOT gateway nodes
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: node-role
+                operator: NotIn
+                values:
+                - gateway
       containers:
       - name: nginx
         image: nginx:alpine
@@ -60,6 +70,16 @@ spec:
       labels:
         app: curl-test
     spec:
+      # Ensure pods run on worker nodes, NOT gateway nodes
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: node-role
+                operator: NotIn
+                values:
+                - gateway
       containers:
       - name: curl
         image: curlimages/curl:latest

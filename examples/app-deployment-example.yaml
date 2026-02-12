@@ -1,0 +1,164 @@
+# Example Application Deployment with Egress Gateway
+#
+# This example shows:
+# 1. Proper node affinity to run on WORKER nodes only (not gateway nodes)
+# 2. Pod labels that match the egress gateway policy
+# 3. Resource limits and requests
+#
+# Deploy with: kubectl apply -f app-deployment-example.yaml
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-app
+  namespace: default
+  labels:
+    app: frontend
+    tier: frontend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: frontend
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+        tier: frontend
+    spec:
+      # CRITICAL: Ensure pods run on WORKER nodes, NOT gateway nodes
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              # Exclude gateway nodes
+              - key: node-role
+                operator: NotIn
+                values:
+                - gateway
+        # Optional: Spread pods across availability zones for HA
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: frontend
+              topologyKey: topology.kubernetes.io/zone
+
+      containers:
+      - name: frontend
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-svc
+  namespace: default
+  labels:
+    app: frontend
+spec:
+  selector:
+    app: frontend
+    tier: frontend
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+    name: http
+  type: ClusterIP
+
+---
+# Egress Gateway Policy for Frontend
+# This routes frontend pods through dedicated gateway nodes
+apiVersion: cilium.io/v2
+kind: CiliumEgressGatewayPolicy
+metadata:
+  name: frontend-egress
+  namespace: default
+spec:
+  # Match pods with these labels
+  selectors:
+  - podSelector:
+      matchLabels:
+        app: frontend
+        tier: frontend
+
+  # Route all external traffic
+  destinationCIDRs:
+  - "0.0.0.0/0"
+
+  # Keep internal traffic direct (optional optimization)
+  excludedCIDRs:
+  - "10.0.0.0/8"      # VPC networks
+  - "172.16.0.0/12"   # Private networks
+  - "192.168.0.0/16"  # Private networks
+
+  # Use gateway nodes with this label
+  egressGateway:
+    nodeSelector:
+      matchLabels:
+        node-role: gateway
+
+---
+# Verification Steps:
+#
+# 1. Check pod placement (should be on worker nodes):
+#    kubectl get pods -l app=frontend -o wide
+#
+# 2. Verify node is NOT a gateway:
+#    NODE=$(kubectl get pod -l app=frontend -o jsonpath='{.items[0].spec.nodeName}')
+#    kubectl get node $NODE --show-labels | grep -v "node-role=gateway"
+#
+# 3. Test egress IP:
+#    POD=$(kubectl get pod -l app=frontend -o jsonpath='{.items[0].metadata.name}')
+#    kubectl exec $POD -- curl -s ifconfig.me
+#    # Should show gateway Elastic IP
+#
+# 4. Check Cilium routing:
+#    CILIUM_POD=$(kubectl get pod -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+#    kubectl exec -n kube-system $CILIUM_POD -- cilium-dbg bpf egress list
+#
+# 5. Run comprehensive verification:
+#    ./scripts/verify-egress-gateway.sh
+
+---
+# Common Issues:
+#
+# Issue: Pods scheduled on gateway nodes
+# Fix: Ensure gateway nodes have taint:
+#      kubectl taint node <gateway-node> egress-gateway=true:NoSchedule
+#
+# Issue: Pods not using gateway IP
+# Fix: Check pod labels match policy selector
+#      kubectl get pod <pod-name> --show-labels
+#
+# Issue: Egress IP not changing
+# Fix: Restart deployment to apply policy:
+#      kubectl rollout restart deployment frontend-app
