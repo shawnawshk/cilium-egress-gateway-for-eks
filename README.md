@@ -58,16 +58,6 @@ Admin pods     → Gateway Node 3 (Elastic IP: 100.48.235.220) → Internet
 - **Nodes in Public Subnet**: Cost-sensitive environments with lower security requirements
 - **Cilium Egress Gateway**: When external services require IP whitelisting
 
-### Cost Example (Test Cluster)
-
-| Solution | Infrastructure | Monthly Cost |
-|----------|----------------|--------------|
-| NAT Gateway | 2 workers + NAT | ~$63 |
-| Nodes in Public | 2 workers (no NAT) | ~$30 |
-| **Cilium Egress Gateway** | 2 workers + 1 gateway | **~$82** |
-
-**Trade-off**: +$19/month for per-application IP control and security benefits.
-
 ## Quick Start
 
 ```bash
