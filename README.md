@@ -43,11 +43,20 @@ Admin pods     → Gateway Node 3 (Elastic IP: 100.48.235.220) → Internet
 
 ## Egress Approaches Comparison
 
-| Approach | Egress IP Control | Cost | Complexity | Use When |
-|----------|-------------------|------|------------|----------|
-| **NAT Gateway** | ❌ Shared IP | $$ | Low | No IP control needed |
-| **Nodes in Public Subnet** | ⚠️ N node IPs | $ | Low | Cost-sensitive, low security |
-| **Cilium Egress Gateway** | ✅ Static per-app | $$ | Medium | IP whitelisting required |
+| Aspect | NAT Gateway | Nodes in Public Subnet | Cilium Egress Gateway |
+|--------|-------------|------------------------|----------------------|
+| **Complexity** | ✅ Simple | ✅ Simple | ❌ Complex |
+| **Cost** | ⚠️ ~$32/mo ongoing | ✅ Low | ⚠️ Medium |
+| **Security** | ✅ Good | ⚠️ Medium | ✅ Excellent |
+| **IP Stability** | ✅ Stable | ✅ Stable | ✅ Static |
+| **Attack Surface** | ✅ 1 IP (NAT) | ⚠️ N IPs (nodes) | ✅ 1 IP (gateway) |
+| **Pod Exposure** | ✅ Private | ✅ Private | ✅ Private |
+| **IP Whitelisting** | ❌ No | ❌ No | ✅ Yes |
+
+**Choose based on your needs:**
+- **NAT Gateway**: Default choice when IP control isn't needed
+- **Nodes in Public Subnet**: Cost-sensitive environments with lower security requirements
+- **Cilium Egress Gateway**: When external services require IP whitelisting
 
 ### Cost Example (Test Cluster)
 
