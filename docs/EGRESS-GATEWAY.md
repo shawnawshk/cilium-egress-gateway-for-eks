@@ -197,7 +197,6 @@ External service sees: 34.227.253.97
 | Aspect | NAT Gateway | Nodes in Public | Cilium Gateway |
 |--------|-------------|-----------------|----------------|
 | **Complexity** | ✅ Simple | ✅ Simple | ❌ Complex |
-| **Cost** | ⚠️ ~$32/mo | ✅ $0 extra | ⚠️ ~$30/mo |
 | **Security** | ✅ Good | ⚠️ Medium | ✅ Excellent |
 | **IP Stability** | ✅ Stable | ✅ Stable | ✅ Static |
 | **IP Whitelisting** | ❌ No | ❌ No | ✅ Yes |
@@ -357,31 +356,22 @@ kubectl get nodes --show-labels | grep gateway
 kubectl label node <gateway-node-name> node-role=gateway
 ```
 
-### Step 3: Allocate Elastic IP
+### Step 3: Verify Elastic IP
+
+Elastic IP allocation and association is handled automatically by Terraform. Verify the assignment:
 
 ```bash
-# Get gateway node instance ID
+# Get the gateway node's Elastic IP
 GATEWAY_NODE=$(kubectl get nodes -l node-role=gateway \
   -o jsonpath='{.items[0].metadata.name}')
+
 INSTANCE_ID=$(aws ec2 describe-instances \
   --filters "Name=private-dns-name,Values=$GATEWAY_NODE" \
   --query 'Reservations[0].Instances[0].InstanceId' \
   --output text)
 
-# Allocate Elastic IP
-EIP_ALLOC=$(aws ec2 allocate-address \
-  --domain vpc \
-  --query 'AllocationId' \
-  --output text)
-
-# Associate with gateway node
-aws ec2 associate-address \
-  --instance-id $INSTANCE_ID \
-  --allocation-id $EIP_ALLOC
-
-# Get the public IP
 EGRESS_IP=$(aws ec2 describe-addresses \
-  --allocation-ids $EIP_ALLOC \
+  --filters "Name=instance-id,Values=$INSTANCE_ID" \
   --query 'Addresses[0].PublicIp' \
   --output text)
 

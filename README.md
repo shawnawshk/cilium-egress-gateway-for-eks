@@ -46,7 +46,6 @@ Admin pods     → Gateway Node 3 (Elastic IP: 100.48.235.220) → Internet
 | Aspect | NAT Gateway | Nodes in Public Subnet | Cilium Egress Gateway |
 |--------|-------------|------------------------|----------------------|
 | **Complexity** | ✅ Simple | ✅ Simple | ❌ Complex |
-| **Cost** | ⚠️ ~$32/mo ongoing | ✅ Low | ⚠️ Medium |
 | **Security** | ✅ Good | ⚠️ Medium | ✅ Excellent |
 | **IP Stability** | ✅ Stable | ✅ Stable | ✅ Static |
 | **Attack Surface** | ✅ 1 IP (NAT) | ⚠️ N IPs (nodes) | ✅ 1 IP (gateway) |
